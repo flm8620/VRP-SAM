@@ -25,6 +25,10 @@ class AverageMeter:
             self.nclass = 1041
         elif self.benchmark == 'paco_part':
             self.nclass = 448
+        elif self.benchmark == 'fss':
+            self.nclass = 240
+        elif self.benchmark == 'pascal_part':
+            self.nclass = dataset.nclass
 
         self.intersection_buf = torch.zeros([2, self.nclass]).float().cuda()
         self.union_buf = torch.zeros([2, self.nclass]).float().cuda()
