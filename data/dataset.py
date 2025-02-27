@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 
 from data.pascal import DatasetPASCAL
 from data.coco import DatasetCOCO
+from data.lvis import DatasetLVIS
+from data.paco_part import DatasetPACOPart
 # from data.coco2pascal import DatasetCOCO2PASCAL
 
 
@@ -16,6 +18,8 @@ class FSSDataset:
         cls.datasets = {
             'pascal': DatasetPASCAL,
             'coco': DatasetCOCO,
+            'lvis': DatasetLVIS,
+            'paco_part': DatasetPACOPart
             # 'coco2pascal': DatasetCOCO2PASCAL
         }
 

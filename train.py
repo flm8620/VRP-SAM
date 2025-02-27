@@ -43,7 +43,7 @@ def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, train
         area_inter, area_union = Evaluator.classify_prediction(pred_mask.squeeze(1), batch)
         # print(area_inter, area_union, batch['class_id'], loss.detach().clone())
         average_meter.update(area_inter, area_union, batch['class_id'], loss.detach().clone())
-        average_meter.write_process(idx, len(dataloader), epoch, write_batch_idx=50)
+        average_meter.write_process(idx, len(dataloader), epoch, write_batch_idx=200)
 
     average_meter.write_result('Training' if training else 'Validation', epoch)
     avg_loss = utils.mean(average_meter.loss_buf)
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     # Arguments parsing
     parser = argparse.ArgumentParser(description='Visual Prompt Encoder Pytorch Implementation')
     parser.add_argument('--datapath', type=str, default='/root/paddlejob/workspace/env_run/datsets/')
-    parser.add_argument('--benchmark', type=str, default='coco', choices=['pascal', 'coco', 'fss', 'lvis'])
+    parser.add_argument('--benchmark', type=str, default='coco', choices=['pascal', 'coco', 'fss', 'lvis', 'paco_part'])
     parser.add_argument('--logpath', type=str, default='')
     parser.add_argument('--bsz', type=int, default=2) # batch size = num_gpu * bsz default num_gpu = 4
     parser.add_argument('--lr', type=float, default=1e-4)
