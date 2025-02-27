@@ -47,9 +47,8 @@ class FSSDataset:
         if split == 'trn':
             sampler = torch.utils.data.distributed.DistributedSampler(dataset,shuffle=shuffle)
             shuffle = False
+            dataloader = DataLoader(dataset, batch_size=bsz, shuffle=False, pin_memory=True, num_workers=nworker, sampler=sampler)
         else:
-            sampler = torch.utils.data.distributed.DistributedSampler(dataset,shuffle=shuffle)
-            pin_memory = True
-        dataloader = DataLoader(dataset, batch_size=bsz, shuffle=False, pin_memory=True, num_workers=nworker, sampler=sampler)
+            dataloader = DataLoader(dataset, batch_size=bsz, shuffle=False, pin_memory=True, num_workers=nworker)
 
         return dataloader

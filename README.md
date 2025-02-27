@@ -95,22 +95,26 @@ We provide a example training script "train.sh". Detailed training argumnets are
 > python3 -m torch.distributed.launch --nproc_per_node=$GPUs$ train.py \
 >         --datapath $PATH_TO_YOUR_DATA$ \
 >         --logpath $PATH_TO_YOUR_LOG$ \
->         --benchmark {coco, pascal} \
+>         --benchmark {coco, pascal, lvis, pascal_part, paco_part, fss} \
 >         --backbone {vgg16, resnet50, resnet101} \
 >         --fold {0, 1, 2, 3} \
 >         --condition {point, scribble, box, mask} \
->         --num_queirs 50 \
+>         --num_query 50 \
 >         --epochs 50 \
 >         --lr 1e-4 \
 >         --bsz 2     
 > ```
 
+## Eval
 
-#### Example qualitative results (1-shot):
+To evaluate a given checkpoint run the following
 
-<p align="middle">
-    <img src="assets/prediction.jpg" height="500">
-</p>
+```bash
+python eval.py --datapath /data/gtrivigno --logpath log_dir  \
+    --benchmark {coco, pascal, lvis, pascal_part, paco_part, fss}  \
+    --fold {fold}  --condition mask   --num_query 50   --resume best_model_path
+```
+
    
 ## BibTeX
 If you use this code for your research, please consider citing:
