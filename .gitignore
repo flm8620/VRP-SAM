@@ -1,0 +1,7 @@
+.idea
+a_env
+.spyproject
+__pycache__
+*.ipynb
+logs
+*.pth

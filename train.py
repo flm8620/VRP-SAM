@@ -40,8 +40,8 @@ def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, train
             loss.backward()
             optimizer.step()
             scheduler.step()
-
         area_inter, area_union = Evaluator.classify_prediction(pred_mask.squeeze(1), batch)
+        # print(area_inter, area_union, batch['class_id'], loss.detach().clone())
         average_meter.update(area_inter, area_union, batch['class_id'], loss.detach().clone())
         average_meter.write_process(idx, len(dataloader), epoch, write_batch_idx=50)
 
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     # Arguments parsing
     parser = argparse.ArgumentParser(description='Visual Prompt Encoder Pytorch Implementation')
     parser.add_argument('--datapath', type=str, default='/root/paddlejob/workspace/env_run/datsets/')
-    parser.add_argument('--benchmark', type=str, default='coco', choices=['pascal', 'coco', 'fss'])
+    parser.add_argument('--benchmark', type=str, default='coco', choices=['pascal', 'coco', 'fss', 'lvis'])
     parser.add_argument('--logpath', type=str, default='')
     parser.add_argument('--bsz', type=int, default=2) # batch size = num_gpu * bsz default num_gpu = 4
     parser.add_argument('--lr', type=float, default=1e-4)
@@ -74,11 +74,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # Distributed setting
     local_rank = args.local_rank
+    local_rank = int(os.environ['LOCAL_RANK'])
     dist.init_process_group(backend='nccl')
     print('local_rank: ', local_rank)
     torch.cuda.set_device(local_rank)
-    device = torch.device('cuda', local_rank)
-    
+    #device = torch.device('cuda', local_rank)
+    device = torch.device('cuda')
     if utils.is_main_process():
         Logger.initialize(args, training=True)
     utils.fix_randseed(args.seed)
@@ -92,7 +93,8 @@ if __name__ == '__main__':
     model.to(device)
     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     # Device setup
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
     
     for param in model.module.layer0.parameters():
         param.requires_grad = False

@@ -8,7 +8,7 @@ import numpy as np
 class  SAM_pred(nn.Module):
     def __init__(self, ):
         super().__init__()
-        self.sam_model = sam_model_registry['vit_h']('/root/paddlejob/workspace/env_run/vrp_sam/sam_vit_h_4b8939.pth')
+        self.sam_model = sam_model_registry['vit_h']('sam_vit_h_4b8939.pth')
         self.sam_model.eval()
 
     def forward_img_encoder(self, query_img):
@@ -82,9 +82,9 @@ class  SAM_pred(nn.Module):
         protos, point_prompt = self.get_pormpt(protos, points_mask)
         with torch.no_grad():
             #-------------save_sam_img_feat-------------------------
-            # query_feats = self.forward_img_encoder(query_img)
+            query_feats = self.forward_img_encoder(query_img)
 
-            query_feats = self.get_feat_from_np(query_img, query_name, protos)
+            # query_feats = self.get_feat_from_np(query_img, query_name, protos)
 
         q_sparse_em, q_dense_em = self.forward_prompt_encoder(
                 points=point_prompt,
