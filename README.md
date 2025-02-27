@@ -23,7 +23,8 @@ Conda environment settings:
 conda create -n vrpsam python=3.10
 conda activate vrpsam
 
-conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
+pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu118
+pip install -r requirements.txt
 ```
 
 Segment-Anything-Model setting:
@@ -32,6 +33,12 @@ cd ./segment-anything
 pip install -v -e .
 cd ..
 ```
+## Download Pre-trained ResNet-50 and SAM-H
+
+SAM-H: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+ResNet-50 from authors: https://drive.google.com/drive/folders/1Hrz1wOxOZm4nIIS7UMJeL79AQrdvpj6v
+
+and place them in the repo directory
 
 ## Preparing Few-Shot Segmentation Datasets
 Download following datasets:
