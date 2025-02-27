@@ -18,7 +18,7 @@ class DatasetCOCO(Dataset):
         self.benchmark = 'coco'
         self.shot = shot
         self.split_coco = split if split == 'val2014' else 'train2014'
-        self.base_path = os.path.join(datapath, 'MSCOCO14')
+        self.base_path = os.path.join(datapath, 'COCO2014')
         self.transform = transform
         self.use_original_imgsize = use_original_imgsize
 
