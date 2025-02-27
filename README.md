@@ -110,7 +110,7 @@ We provide a example training script "train.sh". Detailed training argumnets are
 To evaluate a given checkpoint run the following
 
 ```bash
-python eval.py --datapath /data/gtrivigno --logpath log_dir  \
+python eval.py --datapath $PATH_TO_YOUR_DATA$ --logpath log_dir  \
     --benchmark {coco, pascal, lvis, pascal_part, paco_part, fss}  \
     --fold {fold}  --condition mask   --num_query 50   --resume best_model_path
 ```

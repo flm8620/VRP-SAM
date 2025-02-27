@@ -76,6 +76,7 @@ if __name__ == '__main__':
     if args.resume is not None:
         ck = torch.load(args.resume)
         ck = {k.replace('module.', ''):v for k, v in ck.items()}
+        model.load_state_dict(ck)   
     Logger.log_params(model)
 
     sam_model = SAM_pred()
