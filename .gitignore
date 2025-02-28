@@ -5,3 +5,7 @@ __pycache__
 *.ipynb
 logs
 *.pth
+out_files
+jobs
+cl_launcher*
+get_free*
