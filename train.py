@@ -71,6 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', type=int, default=-1, help='number of cpu threads to use during batch generation')
     parser.add_argument('--num_query', type=int, default=50)
     parser.add_argument('--backbone', type=str, default='resnet50', choices=['vgg16', 'resnet50', 'resnet101'])
+    parser.add_argument('--resume', type=str, default=None)
     args = parser.parse_args()
     # Distributed setting
     local_rank = args.local_rank
