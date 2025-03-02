@@ -86,6 +86,11 @@ if __name__ == '__main__':
     utils.fix_randseed(args.seed)
     # Model initialization
     model = VRP_encoder(args, args.backbone, False)
+    if args.resume is not None:
+        ck = torch.load(args.resume)
+        ck = {k.replace('module.', ''):v for k, v in ck.items()}
+        model.load_state_dict(ck)   
+
     if utils.is_main_process():
         Logger.log_params(model)
 
