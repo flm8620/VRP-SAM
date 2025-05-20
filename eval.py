@@ -23,14 +23,17 @@ def eval(args, model, sam_model, dataloader, training):
     model.eval()
     average_meter = AverageMeter(dataloader.dataset)
 
+    from time import time
+    t_el=0
     for idx, batch in enumerate(dataloader):
         
         batch = utils.to_cuda(batch)
+        s =time()
         protos, _ = model(args.condition, batch['query_img'], batch['support_imgs'].squeeze(1), batch['support_masks'].squeeze(1), training)
 
         low_masks, pred_mask = sam_model(batch['query_img'], batch['query_name'], protos)
         logit_mask = low_masks
-        
+        t_el += time() -s
         pred_mask = torch.sigmoid(logit_mask) > 0.5
         pred_mask = pred_mask.float()
 
@@ -38,7 +41,10 @@ def eval(args, model, sam_model, dataloader, training):
         # print(area_inter, area_union, batch['class_id'], loss.detach().clone())
         average_meter.update(area_inter, area_union, batch['class_id'], None)
         average_meter.write_process(idx, len(dataloader), 0, write_batch_idx=100)
-
+        if (idx+1) % 50 == 0:
+            lat = t_el / (idx*2)
+            fps = 1/lat
+            print(f'fps: {fps:.1f}')
     average_meter.write_result('Validation', 0)
     avg_loss = utils.mean(average_meter.loss_buf)
     miou, fb_iou = average_meter.compute_iou()
