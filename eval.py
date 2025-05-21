@@ -63,6 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--weight_decay', type=float, default=1e-6)
     parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--sam_version', type=str, default='vit_h')
     parser.add_argument('--nworker', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--fold', type=int, default=0)
@@ -85,7 +86,7 @@ if __name__ == '__main__':
         model.load_state_dict(ck)   
     Logger.log_params(model)
 
-    sam_model = SAM_pred()
+    sam_model = SAM_pred(args.sam_version)
     sam_model.to(device)
     model.to(device)
     
