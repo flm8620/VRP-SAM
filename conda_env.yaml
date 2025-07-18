@@ -1,0 +1,18 @@
+name: vrpsam-eval
+
+channels:
+  - nvidia/label/cuda-11.8.0 # 优先cuda-11.8 channel，以防cuda各种依赖库跑到版本12或以上
+  - pytorch
+  - nvidia
+  - conda-forge
+
+dependencies:
+  - conda-tree
+  - python=3.10
+  - setuptools<65 # 编译MinkowskiEngine对高版本setuptools有问题
+  - pytorch=2.3.1
+  - pytorch-cuda=11.8
+  - torchvision=0.18.1
+  - torchaudio=2.3.1
+  - cudatoolkit=11.8
+  - pip
