@@ -120,7 +120,7 @@ class Logger:
         logging.getLogger('').addHandler(console)
 
         # Tensorboard writer
-        cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd/runs'))
+        cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd'))
 
         # Log arguments
         logging.info('\n:=========== Few-shot Seg. with VRP-SAM ===========')
@@ -137,6 +137,20 @@ class Logger:
     def save_model_miou(cls, model, epoch, val_miou):
         torch.save(model.state_dict(), os.path.join(cls.logpath, 'best_model.pt'))
         cls.info('Model saved @%d w/ val. mIoU: %5.2f.\n' % (epoch, val_miou))
+
+    @classmethod
+    def save_model_checkpoint(cls, model, optimizer, scheduler, epoch, val_miou, val_loss):
+        """Save model checkpoint with optimizer and scheduler states"""
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'val_miou': val_miou,
+            'val_loss': val_loss
+        }
+        torch.save(checkpoint, os.path.join(cls.logpath, f'checkpoint_epoch_{epoch:03d}.pt'))
+        cls.info('Checkpoint saved @%d w/ val. mIoU: %5.2f, val. loss: %6.5f.\n' % (epoch, val_miou, val_loss))
 
     @classmethod
     def log_params(cls, model):

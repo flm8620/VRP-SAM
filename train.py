@@ -87,10 +87,27 @@ if __name__ == '__main__':
     utils.fix_randseed(args.seed)
     # Model initialization
     model = VRP_encoder(args, args.backbone, False)
+    start_epoch = 0
+    best_val_miou = float('-inf')
+    best_val_loss = float('inf')
+    
     if args.resume is not None:
-        ck = torch.load(args.resume)
-        ck = {k.replace('module.', ''):v for k, v in ck.items()}
-        model.load_state_dict(ck)   
+        if utils.is_main_process():
+            Logger.info(f'Resuming from {args.resume}')
+        checkpoint = torch.load(args.resume, map_location='cpu')
+        
+        # Handle both old format (state_dict only) and new format (full checkpoint)
+        if 'model_state_dict' in checkpoint:
+            # New checkpoint format
+            model_state_dict = {k.replace('module.', ''): v for k, v in checkpoint['model_state_dict'].items()}
+            model.load_state_dict(model_state_dict)
+            start_epoch = checkpoint.get('epoch', 0) + 1
+            best_val_miou = checkpoint.get('val_miou', float('-inf'))
+            best_val_loss = checkpoint.get('val_loss', float('inf'))
+        else:
+            # Old format - just state dict
+            model_state_dict = {k.replace('module.', ''): v for k, v in checkpoint.items()}
+            model.load_state_dict(model_state_dict)   
 
     if utils.is_main_process():
         Logger.log_params(model)
@@ -120,33 +137,54 @@ if __name__ == '__main__':
         {'params': model.module.merge_1.parameters(), "lr": args.lr},
         
         ],lr = args.lr, weight_decay=args.weight_decay, betas=(0.9, 0.999))
+    
     Evaluator.initialize(args)
 
     # Dataset initialization
     FSSDataset.initialize(img_size=512, datapath=args.datapath, use_original_imgsize=False)
     dataloader_trn = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'trn')
-
     dataloader_val = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'val')
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max= args.epochs * len(dataloader_trn))
+    
+    # Resume optimizer and scheduler if available
+    if args.resume is not None and 'optimizer_state_dict' in torch.load(args.resume, map_location='cpu'):
+        checkpoint = torch.load(args.resume, map_location='cpu')
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        if utils.is_main_process():
+            Logger.info('Resumed optimizer and scheduler states')
+
     # Training 
-    best_val_miou = float('-inf')
-    best_val_loss = float('inf')
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
 
         trn_loss, trn_miou, trn_fb_iou = train(args, epoch, model, sam_model, dataloader_trn, optimizer, scheduler, training=True)
         with torch.no_grad():
             val_loss, val_miou, val_fb_iou = train(args, epoch, model, sam_model, dataloader_val, optimizer, scheduler, training=False)
 
-        # Save the best model
-        if val_miou > best_val_miou:
-            best_val_miou = val_miou
-            if utils.is_main_process():
-                Logger.save_model_miou(model, epoch, val_miou)
+        # Save checkpoint for every epoch and best model
         if utils.is_main_process():
-            Logger.tbd_writer.add_scalars('data/loss', {'trn_loss': trn_loss, 'val_loss': val_loss}, epoch)
-            Logger.tbd_writer.add_scalars('data/miou', {'trn_miou': trn_miou, 'val_miou': val_miou}, epoch)
-            Logger.tbd_writer.add_scalars('data/fb_iou', {'trn_fb_iou': trn_fb_iou, 'val_fb_iou': val_fb_iou}, epoch)
+            # Save checkpoint every epoch
+            Logger.save_model_checkpoint(model, optimizer, scheduler, epoch, val_miou, val_loss)
+            
+            # Save the best model
+            if val_miou > best_val_miou:
+                best_val_miou = val_miou
+                Logger.save_model_miou(model, epoch, val_miou)
+            
+            # Get current learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+            
+            # Log to tensorboard
+            Logger.tbd_writer.add_scalars('train/loss', trn_loss, epoch)
+            Logger.tbd_writer.add_scalars('val/loss', val_loss, epoch)
+            Logger.tbd_writer.add_scalars('train/miou', trn_miou, epoch)
+            Logger.tbd_writer.add_scalars('val/miou', val_miou, epoch)
+            Logger.tbd_writer.add_scalars('train/fb_iou', trn_fb_iou, epoch)
+            Logger.tbd_writer.add_scalars('val/fb_iou', val_fb_iou, epoch)
+            Logger.tbd_writer.add_scalar('learning_rate', current_lr, epoch)
             Logger.tbd_writer.flush()
-    Logger.tbd_writer.close()
-    Logger.info('==================== Finished Training ====================')
+    
+    if utils.is_main_process():
+        Logger.tbd_writer.close()
+        Logger.info('==================== Finished Training ====================')
