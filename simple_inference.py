@@ -13,10 +13,8 @@ python simple_inference.py --support_dir support_samples/ --query_dir query_imag
 import os
 import argparse
 import torch
-import torch.nn.functional as F
 import numpy as np
 from PIL import Image
-import cv2
 import matplotlib.pyplot as plt
 from pathlib import Path
 
