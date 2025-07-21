@@ -176,12 +176,12 @@ if __name__ == '__main__':
             current_lr = optimizer.param_groups[0]['lr']
             
             # Log to tensorboard
-            Logger.tbd_writer.add_scalars('train/loss', trn_loss, epoch)
-            Logger.tbd_writer.add_scalars('val/loss', val_loss, epoch)
-            Logger.tbd_writer.add_scalars('train/miou', trn_miou, epoch)
-            Logger.tbd_writer.add_scalars('val/miou', val_miou, epoch)
-            Logger.tbd_writer.add_scalars('train/fb_iou', trn_fb_iou, epoch)
-            Logger.tbd_writer.add_scalars('val/fb_iou', val_fb_iou, epoch)
+            Logger.tbd_writer.add_scalar('train/loss', trn_loss, epoch)
+            Logger.tbd_writer.add_scalar('val/loss', val_loss, epoch)
+            Logger.tbd_writer.add_scalar('train/miou', trn_miou, epoch)
+            Logger.tbd_writer.add_scalar('val/miou', val_miou, epoch)
+            Logger.tbd_writer.add_scalar('train/fb_iou', trn_fb_iou, epoch)
+            Logger.tbd_writer.add_scalar('val/fb_iou', val_fb_iou, epoch)
             Logger.tbd_writer.add_scalar('learning_rate', current_lr, epoch)
             Logger.tbd_writer.flush()
     
