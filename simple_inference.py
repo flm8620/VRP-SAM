@@ -3,11 +3,13 @@
 VRP-SAM Simple Inference Script
 简化的推理脚本，用于在新图像上进行物体分割
 
-输入：支持图像+mask，查询图像
+输入：
+- support_dir: 包含参考图像和对应mask子文件夹的目录
+- query_dir: 包含所有需要推理测试的图像文件夹
 输出：查询图像的分割mask，保存为PNG文件
 
 使用方法:
-python simple_inference.py --support_dir support_samples/ --query_dir query_images/ --output_dir results/
+python simple_inference.py --support_dir support_samples/ --query_dir query_images/ --object_classes cube car --output_dir results/
 """
 
 import os
@@ -36,6 +38,7 @@ class VRPSAMInference:
         if model_path and os.path.exists(model_path):
             print(f"Loading VRP model from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = checkpoint['model_state_dict']
             # 移除 'module.' 前缀（如果存在）
             checkpoint = {k.replace('module.', ''): v for k, v in checkpoint.items()}
             self.vrp_model.load_state_dict(checkpoint)
@@ -114,19 +117,13 @@ class VRPSAMInference:
             raise ValueError(f"Mask directory not found: {mask_dir}")
         
         # 获取所有jpg图像文件
-        all_img_files = list(img_dir.glob("*.jpg")) + list(img_dir.glob("*.JPG"))
+        all_img_files = list(img_dir.glob("*.jpg")) + list(img_dir.glob("*.png"))
         
         if support_images is not None:
             # 用户指定了特定的支持图像
             selected_files = []
             for img_name in support_images:
-                # 支持带扩展名和不带扩展名的输入
-                if not img_name.endswith('.jpg') and not img_name.endswith('.JPG'):
-                    img_file = img_dir / f"{img_name}.jpg"
-                    if not img_file.exists():
-                        img_file = img_dir / f"{img_name}.JPG"
-                else:
-                    img_file = img_dir / img_name
+                img_file = img_dir / img_name
                 
                 if img_file.exists() and img_file in all_img_files:
                     selected_files.append(img_file)
@@ -147,8 +144,6 @@ class VRPSAMInference:
             
             # 查找对应的mask文件 (格式: xxx_mask.png)
             mask_file = mask_dir / f"{img_stem}_mask.png"
-            if not mask_file.exists():
-                mask_file = mask_dir / f"{img_stem}_mask.PNG"
             
             if mask_file.exists():
                 print(f"Found {object_class} support pair: {img_file.name} -> {mask_file.name}")
@@ -364,10 +359,11 @@ class VRPSAMInference:
             plt.savefig(prob_heatmap_path, dpi=150, bbox_inches='tight')
             plt.close()
     
-    def run_inference(self, support_dir, object_classes, output_dir, use_all_support=True, support_images=None):
+    def run_inference(self, support_dir, query_dir, object_classes, output_dir, use_all_support=True, support_images=None):
         """运行完整推理流程
         Args:
-            support_dir: 包含图像和mask的根目录
+            support_dir: 包含参考图像和对应mask子文件夹的目录
+            query_dir: 包含所有需要推理测试的图像文件夹
             object_classes: 要处理的物体类别列表，如['cube', 'car']
             output_dir: 输出根目录
             use_all_support: 是否使用所有支持样本
@@ -376,14 +372,22 @@ class VRPSAMInference:
         # 创建输出根目录
         os.makedirs(output_dir, exist_ok=True)
         
-        # 获取所有查询图像（所有jpg文件）
-        support_path = Path(support_dir)
-        query_files = list(support_path.glob("*.jpg")) + list(support_path.glob("*.JPG"))
+        # 获取所有查询图像
+        query_path = Path(query_dir)
+        if not query_path.exists():
+            raise ValueError(f"Query directory not found: {query_dir}")
+            
+        query_files = list(query_path.glob("*.jpg")) + list(query_path.glob("*.png"))
         
         if not query_files:
-            raise ValueError(f"No query images (jpg files) found in {support_dir}")
+            raise ValueError(f"No query images (jpg/png files) found in {query_dir}")
         
-        print(f"Found {len(query_files)} total images in dataset")
+        print(f"Found {len(query_files)} query images in {query_dir}")
+        
+        # 验证support_dir存在
+        support_path = Path(support_dir)
+        if not support_path.exists():
+            raise ValueError(f"Support directory not found: {support_dir}")
         
         # 为每个物体类别进行推理
         for object_class in object_classes:
@@ -397,32 +401,28 @@ class VRPSAMInference:
             
             try:
                 # 预处理支持数据
-                print(f"Loading {object_class} support data...")
+                print(f"Loading {object_class} support data from {support_dir}...")
                 support_imgs, support_masks, used_support_files = self.preprocess_support_data(
                     support_dir, object_class, support_images
                 )
                 print(f"Loaded {len(support_imgs)} {object_class} support samples: {used_support_files}")
                 
-                # 创建info文件记录支持文件
-                info_file = class_output_dir / "support_info.txt"
+                # 创建info文件记录支持文件和查询目录
+                info_file = class_output_dir / "inference_info.txt"
                 with open(info_file, 'w') as f:
                     f.write(f"Object Class: {object_class}\n")
+                    f.write(f"Support Directory: {support_dir}\n")
                     f.write(f"Support Images Used: {', '.join(used_support_files)}\n")
                     f.write(f"Total Support Samples: {len(support_imgs)}\n")
+                    f.write(f"Query Directory: {query_dir}\n")
+                    f.write(f"Total Query Images: {len(query_files)}\n")
                     f.write(f"Use All Support: {use_all_support}\n")
-                    f.write(f"Query Images: All jpg files in {support_dir}\n")
                 
-                # 确定查询图像（排除支持图像）
-                query_images = []
-                for img_file in query_files:
-                    if img_file.name not in used_support_files:
-                        query_images.append(img_file)
-                
-                print(f"Query images for {object_class}: {len(query_images)} files")
+                print(f"Processing {len(query_files)} query images from {query_dir}")
                 
                 # 对每张查询图像进行预测
-                for i, query_file in enumerate(sorted(query_images)):
-                    print(f"Processing {object_class} {i+1}/{len(query_images)}: {query_file.name}")
+                for i, query_file in enumerate(sorted(query_files)):
+                    print(f"Processing {object_class} {i+1}/{len(query_files)}: {query_file.name}")
                     
                     try:
                         # 预测
@@ -459,8 +459,10 @@ class VRPSAMInference:
 
 def main():
     parser = argparse.ArgumentParser(description='VRP-SAM Simple Inference')
-    parser.add_argument('--data_dir', type=str, required=True,
-                        help='Directory containing images and mask subdirectories (e.g., car_cube_cat)')
+    parser.add_argument('--support_dir', type=str, required=True,
+                        help='Directory containing support images and mask subdirectories (e.g., car_mask/, cube_mask/)')
+    parser.add_argument('--query_dir', type=str, required=True,
+                        help='Directory containing query images to be segmented')
     parser.add_argument('--object_classes', type=str, nargs='+', required=True,
                         help='Object classes to process (e.g., cube car)')
     parser.add_argument('--output_dir', type=str, default='./inference_results',
@@ -499,6 +501,11 @@ def main():
     else:
         print("Using all available support images")
     
+    print(f"Support directory: {args.support_dir}")
+    print(f"Query directory: {args.query_dir}")
+    print(f"Object classes: {args.object_classes}")
+    print(f"Output directory: {args.output_dir}")
+    
     # 创建推理器
     inferencer = VRPSAMInference(
         model_path=args.model_path,
@@ -509,7 +516,8 @@ def main():
     
     # 运行推理
     inferencer.run_inference(
-        support_dir=args.data_dir,
+        support_dir=args.support_dir,
+        query_dir=args.query_dir,
         object_classes=args.object_classes,
         output_dir=args.output_dir,
         use_all_support=use_all_support,
