@@ -1,0 +1,34 @@
+{
+  "support_classes": {
+    "cube": {
+      "description": "立方体/方块对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/my_test/car_cube_cat/WechatIMG40.jpg",
+          "mask": "datasets/my_test/car_cube_cat/cube_mask/WechatIMG40_mask.png"
+        },
+        {
+          "image": "datasets/my_test/car_cube_cat/WechatIMG41.jpg",
+          "mask": "datasets/my_test/car_cube_cat/cube_mask/WechatIMG41_mask.png"
+        },
+        {
+          "image": "datasets/my_test/car_cube_cat/WechatIMG46.jpg",
+          "mask": "datasets/my_test/car_cube_cat/cube_mask/WechatIMG46_mask.png"
+        }
+      ]
+    },
+    "car": {
+      "description": "汽车对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/my_test/car_cube_cat/WechatIMG64.jpg",
+          "mask": "datasets/my_test/car_cube_cat/car_mask/WechatIMG64_mask.png"
+        }
+      ]
+    }
+  },
+  "default_settings": {
+    "use_all_support": true,
+    "max_support_samples": 5
+  }
+}

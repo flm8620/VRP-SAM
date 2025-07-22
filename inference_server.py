@@ -37,12 +37,24 @@ from common import utils
 
 
 class VRPSAMInferenceServer:
-    def __init__(self, model_path, sam_version='vit_h', backbone='resnet50', device='cuda'):
+    def __init__(self, model_path, sam_version='vit_h', backbone='resnet50', device='cuda', config_path='support_classes_config.json'):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         self.model_lock = Lock()  # 确保模型推理的线程安全
         
+        # 图像预处理参数
+        self.img_size = 512
+        self.mean = [0.485, 0.456, 0.406]
+        self.std = [0.229, 0.224, 0.225]
+        
         print(f"Initializing VRP-SAM Inference Server...")
         print(f"Using device: {self.device}")
+        
+        # 加载支持类别配置
+        self.config_path = config_path
+        self.support_config = self._load_support_config()
+        
+        # 预加载所有支持样本
+        self._preload_support_samples()
         
         # 加载VRP模型
         args = self._create_args(backbone)
@@ -51,6 +63,7 @@ class VRPSAMInferenceServer:
         if model_path and os.path.exists(model_path):
             print(f"Loading VRP model from {model_path}")
             checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = checkpoint['model_state_dict']
             # 移除 'module.' 前缀（如果存在）
             checkpoint = {k.replace('module.', ''): v for k, v in checkpoint.items()}
             self.vrp_model.load_state_dict(checkpoint)
@@ -66,13 +79,72 @@ class VRPSAMInferenceServer:
         self.sam_model.to(self.device)
         self.sam_model.eval()
         
-        # 图像预处理参数
-        self.img_size = 512
-        self.mean = [0.485, 0.456, 0.406]
-        self.std = [0.229, 0.224, 0.225]
         
         print("Server initialization completed!")
         
+    def _load_support_config(self):
+        """加载支持类别配置"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                print(f"Loaded support classes config from {self.config_path}")
+                available_classes = list(config['support_classes'].keys())
+                print(f"Available classes: {available_classes}")
+                return config
+            else:
+                print(f"Warning: Config file {self.config_path} not found, using empty config")
+                return {'support_classes': {}, 'default_settings': {}}
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            return {'support_classes': {}, 'default_settings': {}}
+    
+    def _preload_support_samples(self):
+        """预加载所有支持样本到内存"""
+        self.preloaded_samples = {}
+        
+        for class_name, class_config in self.support_config['support_classes'].items():
+            print(f"Preloading support samples for class: {class_name}")
+            support_images = []
+            support_masks = []
+            
+            for sample in class_config['support_samples']:
+                try:
+                    # 加载图像
+                    img_path = sample['image']
+                    mask_path = sample['mask']
+                    
+                    if os.path.exists(img_path) and os.path.exists(mask_path):
+                        img = Image.open(img_path).convert('RGB')
+                        mask = Image.open(mask_path).convert('RGB')
+                        
+                        # 预处理并存储tensor
+                        img_tensor = self.preprocess_image(img)
+                        mask_tensor = self.preprocess_mask(mask)
+                        
+                        support_images.append(img_tensor)
+                        support_masks.append(mask_tensor)
+                        print(f"  Loaded: {os.path.basename(img_path)}")
+                    else:
+                        print(f"  Warning: Missing files for {img_path} or {mask_path}")
+                except Exception as e:
+                    print(f"  Error loading sample {sample}: {e}")
+            
+            if support_images:
+                # 合并所有支持样本为batch tensor
+                self.preloaded_samples[class_name] = {
+                    'images': torch.cat(support_images, dim=0),
+                    'masks': torch.cat(support_masks, dim=0),
+                    'count': len(support_images)
+                }
+                print(f"  Successfully preloaded {len(support_images)} samples for {class_name}")
+            else:
+                print(f"  No valid samples found for {class_name}")
+    
+    def get_available_classes(self):
+        """获取可用的识别类别"""
+        return list(self.support_config['support_classes'].keys())
+    
     def _create_args(self, backbone):
         """创建模型需要的参数"""
         class Args:
@@ -133,76 +205,81 @@ class VRPSAMInferenceServer:
         mask_tensor = torch.from_numpy(mask_array).float()
         return mask_tensor.unsqueeze(0)  # 添加batch维度
     
-    def predict(self, query_image, support_images, support_masks, use_all_support=True):
-        """执行推理预测"""
+    def predict_with_class(self, query_images, class_name, use_all_support=None):
+        """使用预配置类别执行推理预测"""
         with self.model_lock:
-            # 预处理查询图像
-            query_tensor = self.preprocess_image(query_image)
-            query_name = ["query"]
+            # 检查类别是否存在
+            if class_name not in self.preloaded_samples:
+                raise ValueError(f"Class '{class_name}' not found. Available classes: {self.get_available_classes()}")
             
-            # 预处理支持数据
-            support_tensors = []
-            mask_tensors = []
+            # 获取默认设置
+            default_settings = self.support_config.get('default_settings', {})
+            if use_all_support is None:
+                use_all_support = default_settings.get('use_all_support', True)
             
-            for support_img, support_mask in zip(support_images, support_masks):
-                support_tensor = self.preprocess_image(support_img)
-                mask_tensor = self.preprocess_mask(support_mask)
-                support_tensors.append(support_tensor)
-                mask_tensors.append(mask_tensor)
+            # 获取预加载的支持样本
+            support_data = self.preloaded_samples[class_name]
+            support_imgs = support_data['images'].to(self.device)
+            support_masks = support_data['masks'].to(self.device)
             
-            # 合并支持数据
-            support_imgs = torch.cat(support_tensors, dim=0)
-            support_masks_tensor = torch.cat(mask_tensors, dim=0)
+            results = []
             
-            # 移动到GPU
-            query_tensor = query_tensor.to(self.device)
-            support_imgs = support_imgs.to(self.device)
-            support_masks_tensor = support_masks_tensor.to(self.device)
-            
-            with torch.no_grad():
-                if use_all_support and len(support_imgs) > 1:
-                    # 使用多个支持样本
-                    protos_list = []
-                    
-                    for i in range(len(support_imgs)):
-                        support_img = support_imgs[i:i+1]
-                        support_mask = support_masks_tensor[i:i+1]
+            for query_image in query_images:
+                # 预处理查询图像
+                if isinstance(query_image, str):
+                    # 如果是base64字符串，解码
+                    query_image = self.base64_to_image(query_image)
+                
+                query_tensor = self.preprocess_image(query_image).to(self.device)
+                query_name = ["query"]
+                
+                with torch.no_grad():
+                    if use_all_support and len(support_imgs) > 1:
+                        # 使用多个支持样本
+                        protos_list = []
                         
-                        protos, _ = self.vrp_model(
+                        for i in range(len(support_imgs)):
+                            support_img = support_imgs[i:i+1]
+                            support_mask = support_masks[i:i+1]
+                            
+                            protos, _ = self.vrp_model(
+                                'mask',
+                                query_tensor,
+                                support_img,
+                                support_mask,
+                                training=False
+                            )
+                            protos_list.append(protos)
+                        
+                        # 合并多个prototypes
+                        combined_protos = torch.cat(protos_list, dim=1)
+                    else:
+                        # 只使用第一个支持样本
+                        support_img = support_imgs[0:1]
+                        support_mask = support_masks[0:1]
+                        
+                        combined_protos, _ = self.vrp_model(
                             'mask',
                             query_tensor,
                             support_img,
                             support_mask,
                             training=False
                         )
-                        protos_list.append(protos)
                     
-                    # 合并多个prototypes
-                    combined_protos = torch.cat(protos_list, dim=1)
-                else:
-                    # 只使用第一个支持样本
-                    support_img = support_imgs[0:1]
-                    support_mask = support_masks_tensor[0:1]
+                    # SAM预测
+                    low_masks, pred_mask = self.sam_model(query_tensor, query_name, combined_protos)
                     
-                    combined_protos, _ = self.vrp_model(
-                        'mask',
-                        query_tensor,
-                        support_img,
-                        support_mask,
-                        training=False
-                    )
+                    # 获取概率分布
+                    prob_mask = torch.sigmoid(low_masks)
+                    
+                    # 二值化mask
+                    binary_mask = prob_mask > 0.5
+                    binary_mask = binary_mask.float()
                 
-                # SAM预测
-                low_masks, pred_mask = self.sam_model(query_tensor, query_name, combined_protos)
-                
-                # 获取概率分布
-                prob_mask = torch.sigmoid(low_masks)
-                
-                # 二值化mask
-                binary_mask = prob_mask > 0.5
-                binary_mask = binary_mask.float()
+                results.append((binary_mask.squeeze().cpu().numpy(), prob_mask.squeeze().cpu().numpy()))
             
-            return binary_mask.squeeze().cpu().numpy(), prob_mask.squeeze().cpu().numpy()
+            return results
+    
     
     def create_visualization(self, query_image, pred_mask, prob_mask):
         """创建可视化结果"""
@@ -245,46 +322,61 @@ def health_check():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """推理预测接口"""
     try:
         # 解析请求
         data = request.json
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
-        
-        # 验证必需字段
-        required_fields = ['query_image', 'support_images', 'support_masks']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
-        
-        # 解码图像
-        query_image = inference_server.base64_to_image(data['query_image'])
-        
-        support_images = []
-        for img_data in data['support_images']:
-            support_images.append(inference_server.base64_to_image(img_data))
-        
-        support_masks = []
-        for mask_data in data['support_masks']:
-            support_masks.append(inference_server.base64_to_image(mask_data))
-        
-        if len(support_images) != len(support_masks):
-            return jsonify({'error': 'Number of support images must match number of support masks'}), 400
-        
-        # 获取推理参数
-        use_all_support = data.get('use_all_support', True)
-        
-        # 执行推理
-        start_time = time.time()
-        pred_mask, prob_mask = inference_server.predict(
-            query_image, support_images, support_masks, use_all_support
-        )
-        inference_time = time.time() - start_time
-        
+        return predict_with_class(data)
+            
+    except Exception as e:
+        print(f"Error during inference: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': time.time()
+        }), 500
+
+
+def predict_with_class(data):
+    """基于预配置类别的推理"""
+    # 验证必需字段
+    if 'class_name' not in data:
+        return jsonify({'error': 'Missing required field: class_name'}), 400
+    if 'query_images' not in data:
+        return jsonify({'error': 'Missing required field: query_images'}), 400
+    
+    class_name = data['class_name']
+    query_images_data = data['query_images']
+    
+    # 检查类别是否存在
+    available_classes = inference_server.get_available_classes()
+    if class_name not in available_classes:
+        return jsonify({
+            'error': f'Unknown class: {class_name}',
+            'available_classes': available_classes
+        }), 400
+    
+    # 解码查询图像
+    query_images = []
+    for img_data in query_images_data:
+        query_images.append(inference_server.base64_to_image(img_data))
+    
+    # 获取推理参数
+    use_all_support = data.get('use_all_support', None)  # None表示使用默认值
+    
+    # 执行推理
+    start_time = time.time()
+    results = inference_server.predict_with_class(query_images, class_name, use_all_support)
+    inference_time = time.time() - start_time
+    
+    # 处理结果
+    response_results = []
+    
+    for i, (pred_mask, prob_mask) in enumerate(results):
         # 创建可视化结果
         binary_vis, prob_vis, overlay_vis = inference_server.create_visualization(
-            query_image, pred_mask, prob_mask
+            query_images[i], pred_mask, prob_mask
         )
         
         # 计算统计信息
@@ -298,13 +390,7 @@ def predict():
             'total_pixels': int(pred_mask.size)
         }
         
-        # 构建响应
-        response = {
-            'success': True,
-            'timestamp': time.time(),
-            'inference_time': inference_time,
-            'support_samples_used': len(support_images),
-            'use_all_support': use_all_support,
+        result_item = {
             'statistics': stats,
             'results': {
                 'binary_mask': inference_server.image_to_base64(binary_vis),
@@ -312,28 +398,60 @@ def predict():
                 'overlay': inference_server.image_to_base64(overlay_vis)
             }
         }
+        response_results.append(result_item)
+    
+    # 构建响应
+    response = {
+        'success': True,
+        'timestamp': time.time(),
+        'inference_time': inference_time,
+        'class_name': class_name,
+        'query_count': len(query_images),
+        'support_samples_used': inference_server.preloaded_samples[class_name]['count'],
+        'results': response_results
+    }
+    
+    print(f"Class-based inference completed in {inference_time:.3f}s for {len(query_images)} images of class '{class_name}'")
+    
+    return jsonify(response)
+
+
+@app.route('/classes', methods=['GET'])
+def get_classes():
+    """获取可用的识别类别"""
+    try:
+        classes = inference_server.get_available_classes()
+        class_info = {}
         
-        print(f"Inference completed in {inference_time:.3f}s, positive pixels: {stats['positive_pixels']}")
+        for class_name in classes:
+            class_config = inference_server.support_config['support_classes'][class_name]
+            class_info[class_name] = {
+                'description': class_config.get('description', ''),
+                'support_count': len(class_config['support_samples'])
+            }
         
-        return jsonify(response)
-        
+        return jsonify({
+            'success': True,
+            'classes': class_info,
+            'total_classes': len(classes)
+        })
     except Exception as e:
-        print(f"Error during inference: {e}")
         return jsonify({
             'success': False,
-            'error': str(e),
-            'timestamp': time.time()
+            'error': str(e)
         }), 500
 
 
 @app.route('/info', methods=['GET'])
 def server_info():
     """获取服务器信息"""
+    classes = inference_server.get_available_classes()
     return jsonify({
         'model_device': str(inference_server.device),
         'image_size': inference_server.img_size,
-        'available_endpoints': ['/health', '/predict', '/info'],
-        'version': '1.0.0'
+        'available_endpoints': ['/health', '/predict', '/info', '/classes'],
+        'available_classes': classes,
+        'version': '2.0.0'
     })
 
 
@@ -342,6 +460,8 @@ def main():
     parser.add_argument('--model_path', type=str, 
                         default='/home/leman.feng/VRP-SAM-eval/logs/trn1_coco_mask_fold0.log/best_model.pt',
                         help='Path to trained VRP model checkpoint')
+    parser.add_argument('--config_path', type=str, default='support_classes_config.json',
+                        help='Path to support classes configuration file')
     parser.add_argument('--sam_version', type=str, default='vit_h',
                         choices=['vit_h', 'vit_l'], help='SAM model version')
     parser.add_argument('--backbone', type=str, default='resnet50',
@@ -366,13 +486,15 @@ def main():
         model_path=args.model_path,
         sam_version=args.sam_version,
         backbone=args.backbone,
-        device=args.device
+        device=args.device,
+        config_path=args.config_path
     )
     
     print(f"\nStarting VRP-SAM Inference Server...")
     print(f"Server will be available at: http://{args.host}:{args.port}")
     print(f"Health check: http://{args.host}:{args.port}/health")
     print(f"Prediction endpoint: http://{args.host}:{args.port}/predict")
+    print(f"Classes endpoint: http://{args.host}:{args.port}/classes")
     print(f"Server info: http://{args.host}:{args.port}/info")
     print(f"\nPress Ctrl+C to stop the server")
     

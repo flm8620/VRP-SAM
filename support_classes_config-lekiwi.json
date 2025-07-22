@@ -1,0 +1,66 @@
+{
+  "support_classes": {
+    "cube": {
+      "description": "立方体/方块对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data/cube_table_data/front_zoom_1.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/front_zoom_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/front_zoom_2.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/front_zoom_2_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/left_zoom_1.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/left_zoom_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/left_zoom_2.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/left_zoom_2_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/right_zoom_1.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/right_zoom_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/right_zoom_2.png",
+          "mask": "datasets/robot_data/cube_table_data/cube_mask/right_zoom_2_mask.png"
+        }
+      ]
+    },
+    "table": {
+      "description": "操作台对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data/cube_table_data/front_1.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/front_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/front_2.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/front_2_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/left_1.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/left_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/left_2.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/left_2_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/right_1.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/right_1_mask.png"
+        },
+        {
+          "image": "datasets/robot_data/cube_table_data/right_2.png",
+          "mask": "datasets/robot_data/cube_table_data/table_mask/right_2_mask.png"
+        }
+      ]
+    }
+  },
+  "default_settings": {
+    "use_all_support": true,
+    "max_support_samples": 5
+  }
+}

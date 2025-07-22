@@ -1,61 +1,57 @@
 #!/bin/bash
-# VRP-SAM 推理服务快速启动脚本
 
-echo "========================================="
-echo "VRP-SAM 推理服务启动脚本"
-echo "========================================="
+# VRP-SAM 推理服务器启动脚本 V2
+# 支持预配置类别的推理服务
 
-# 默认参数
-MODEL_PATH="/home/leman.feng/VRP-SAM-eval/logs/trn1_coco_mask_fold0.log/best_model.pt"
-HOST="0.0.0.0"
-PORT="58080"
-DEVICE="cuda"
+# 服务器配置
+SERVER_HOST="0.0.0.0"
+SERVER_PORT="58080"
+MODEL_PATH="./checkpoint_vrpsam_resnet101.pt"
+CONFIG_PATH="./support_classes_config-lekiwi.json"
 SAM_VERSION="vit_h"
-BACKBONE="resnet50"
+BACKBONE="resnet101"
+DEVICE="cuda"
 
-# 检查模型文件是否存在
-if [ ! -f "$MODEL_PATH" ]; then
-    echo "警告: 模型文件不存在: $MODEL_PATH"
-    echo "请检查模型路径或训练模型"
-    echo ""
-fi
+echo "========================================"
+echo "VRP-SAM 推理服务器"
+echo "========================================"
 
-# 检查Python依赖
-echo "检查Python依赖..."
-python3 -c "import torch, flask, PIL, numpy, matplotlib" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "错误: 缺少必要的Python依赖"
-    echo "请安装: pip install torch flask pillow numpy matplotlib opencv-python requests"
+# 检查配置文件
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "错误: 配置文件不存在: $CONFIG_PATH"
+    echo "请确保配置文件存在并包含正确的类别定义"
     exit 1
 fi
 
-echo "依赖检查通过"
-echo ""
-
-# 显示启动信息
-echo "启动参数:"
-echo "  模型路径: $MODEL_PATH"
-echo "  服务地址: http://$HOST:$PORT"
-echo "  设备: $DEVICE"
+echo "配置信息:"
+echo "  服务器地址: ${SERVER_HOST}:${SERVER_PORT}"
+echo "  模型文件: $MODEL_PATH"
+echo "  配置文件: $CONFIG_PATH"
 echo "  SAM版本: $SAM_VERSION"
 echo "  骨干网络: $BACKBONE"
+echo "  设备: $DEVICE"
 echo ""
 
-echo "可用的API端点:"
-echo "  健康检查: http://$HOST:$PORT/health"
-echo "  推理接口: http://$HOST:$PORT/predict (POST)"
-echo "  服务信息: http://$HOST:$PORT/info"
-echo ""
+# 检查模型文件
+if [ ! -f "$MODEL_PATH" ]; then
+    echo "警告: 模型文件不存在: $MODEL_PATH"
+    exit 1
+fi
 
-echo "启动服务器..."
-echo "按 Ctrl+C 停止服务"
+echo "启动推理服务器..."
+echo "按 Ctrl+C 停止服务器"
 echo ""
 
 # 启动服务器
 python inference_server.py \
     --model_path "$MODEL_PATH" \
-    --host "$HOST" \
-    --port "$PORT" \
-    --device "$DEVICE" \
+    --config_path "$CONFIG_PATH" \
     --sam_version "$SAM_VERSION" \
-    --backbone "$BACKBONE"
+    --backbone "$BACKBONE" \
+    --device "$DEVICE" \
+    --host "$SERVER_HOST" \
+    --port "$SERVER_PORT" \
+    --debug
+
+echo ""
+echo "服务器已停止"
