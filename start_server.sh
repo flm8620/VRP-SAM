@@ -50,8 +50,7 @@ python inference_server.py \
     --backbone "$BACKBONE" \
     --device "$DEVICE" \
     --host "$SERVER_HOST" \
-    --port "$SERVER_PORT" \
-    --debug
+    --port "$SERVER_PORT"
 
 echo ""
 echo "服务器已停止"

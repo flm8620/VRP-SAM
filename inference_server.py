@@ -210,8 +210,14 @@ class VRPSAMInferenceServer:
             numpy_array: 形状为(H, W, 3)的numpy数组，数据类型为float32，范围[0, 1]
             
         Returns:
-            预处理后的tensor，形状为(1, 3, 512, 512)
+            tuple: (预处理后的tensor，原始尺寸)
+            - 预处理后的tensor，形状为(1, 3, 512, 512)
+            - 原始尺寸，格式为(height, width)
         """
+        # 记录原始尺寸
+        original_height, original_width = numpy_array.shape[:2]
+        original_size = (original_height, original_width)
+        
         # 确保是float32类型，范围[0, 1]
         img_array = numpy_array.astype(np.float32)
         if img_array.max() > 1.0:
@@ -229,7 +235,41 @@ class VRPSAMInferenceServer:
         
         # 转为tensor
         img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).float()
-        return img_tensor.unsqueeze(0)  # 添加batch维度
+        return img_tensor.unsqueeze(0), original_size  # 返回tensor和原始尺寸
+    
+    def resize_mask_to_original(self, mask_array, original_size):
+        """将mask从512x512 resize回原始尺寸
+        
+        Args:
+            mask_array: 形状为(512, 512)的numpy数组
+            original_size: 原始尺寸，格式为(height, width)
+            
+        Returns:
+            resize后的mask，形状为(original_height, original_width)
+        """
+        from PIL import Image
+        
+        # 将numpy数组转为PIL图像进行resize
+        if mask_array.dtype != np.uint8:
+            # 如果是float类型，先转为uint8
+            mask_uint8 = (mask_array * 255).astype(np.uint8)
+        else:
+            mask_uint8 = mask_array
+        
+        mask_pil = Image.fromarray(mask_uint8)
+        
+        # resize到原始尺寸
+        original_height, original_width = original_size
+        resized_pil = mask_pil.resize((original_width, original_height), Image.NEAREST)
+        
+        # 转回numpy数组
+        resized_array = np.array(resized_pil, dtype=np.float32)
+        
+        # 确保值在[0, 1]范围内
+        if resized_array.max() > 1.0:
+            resized_array = resized_array / 255.0
+        
+        return resized_array
     
     def preprocess_image(self, image):
         """预处理图像"""
@@ -355,19 +395,22 @@ class VRPSAMInferenceServer:
             
             results = []
             
-            for query_array in query_arrays:
-                # 预处理numpy查询图像
-                query_tensor = self.preprocess_numpy_image(query_array).to(self.device)
+            for i, query_array in enumerate(query_arrays):
+                # 预处理numpy查询图像，同时获取原始尺寸
+                query_tensor, original_size = self.preprocess_numpy_image(query_array)
+                query_tensor = query_tensor.to(self.device)
                 query_name = ["query"]
+                
+                print(f"Processing query {i+1}: original size {original_size}, resized to (512, 512)")
                 
                 with torch.no_grad():
                     if use_all_support and len(support_imgs) > 1:
                         # 使用多个支持样本
                         protos_list = []
                         
-                        for i in range(len(support_imgs)):
-                            support_img = support_imgs[i:i+1]
-                            support_mask = support_masks[i:i+1]
+                        for j in range(len(support_imgs)):
+                            support_img = support_imgs[j:j+1]
+                            support_mask = support_masks[j:j+1]
                             
                             protos, _ = self.vrp_model(
                                 'mask',
@@ -403,9 +446,14 @@ class VRPSAMInferenceServer:
                     binary_mask = prob_mask > 0.5
                     binary_mask = binary_mask.float()
                 
-                # 直接返回numpy数组，不需要转换
+                # 转换为numpy数组 (此时是512x512)
                 binary_np = binary_mask.squeeze().cpu().numpy()
                 prob_np = prob_mask.squeeze().cpu().numpy()
+                
+                # resize回原始尺寸
+                print(f"Resizing results from (512, 512) back to {original_size}")
+                binary_np = self.resize_mask_to_original(binary_np, original_size)
+                prob_np = self.resize_mask_to_original(prob_np, original_size)
                 
                 results.append((binary_np, prob_np))
             
