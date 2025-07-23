@@ -29,6 +29,8 @@ import numpy as np
 from PIL import Image
 from flask import Flask, request, jsonify
 import cv2
+import pickle
+import zlib
 
 # 导入推理相关模块
 from model.VRP_encoder import VRP_encoder
@@ -175,6 +177,60 @@ class VRPSAMInferenceServer:
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         return image_base64
     
+    def numpy_to_compressed_bytes(self, numpy_array):
+        """将numpy数组压缩并编码为base64字符串"""
+        try:
+            # 使用pickle序列化numpy数组
+            pickled_data = pickle.dumps(numpy_array)
+            # 使用zlib压缩
+            compressed_data = zlib.compress(pickled_data)
+            # 转为base64
+            base64_str = base64.b64encode(compressed_data).decode('utf-8')
+            return base64_str
+        except Exception as e:
+            raise ValueError(f"Error encoding numpy array: {e}")
+    
+    def compressed_bytes_to_numpy(self, base64_str):
+        """将base64字符串解压缩为numpy数组"""
+        try:
+            # 从base64解码
+            compressed_data = base64.b64decode(base64_str)
+            # 解压缩
+            pickled_data = zlib.decompress(compressed_data)
+            # 反序列化numpy数组
+            numpy_array = pickle.loads(pickled_data)
+            return numpy_array
+        except Exception as e:
+            raise ValueError(f"Error decoding numpy array: {e}")
+    
+    def preprocess_numpy_image(self, numpy_array):
+        """预处理numpy格式的图像
+        
+        Args:
+            numpy_array: 形状为(H, W, 3)的numpy数组，数据类型为float32，范围[0, 1]
+            
+        Returns:
+            预处理后的tensor，形状为(1, 3, 512, 512)
+        """
+        # 确保是float32类型，范围[0, 1]
+        img_array = numpy_array.astype(np.float32)
+        if img_array.max() > 1.0:
+            img_array = img_array / 255.0
+        
+        # 调整大小到模型需要的尺寸
+        from PIL import Image
+        pil_image = Image.fromarray((img_array * 255).astype(np.uint8))
+        pil_image = pil_image.resize((self.img_size, self.img_size), Image.BILINEAR)
+        img_array = np.array(pil_image) / 255.0
+        
+        # 归一化
+        for i in range(3):
+            img_array[:, :, i] = (img_array[:, :, i] - self.mean[i]) / self.std[i]
+        
+        # 转为tensor
+        img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).float()
+        return img_tensor.unsqueeze(0)  # 添加batch维度
+    
     def preprocess_image(self, image):
         """预处理图像"""
         # 调整大小
@@ -277,6 +333,81 @@ class VRPSAMInferenceServer:
                     binary_mask = binary_mask.float()
                 
                 results.append((binary_mask.squeeze().cpu().numpy(), prob_mask.squeeze().cpu().numpy()))
+            
+            return results
+    
+    def predict_with_class_numpy(self, query_arrays, class_name, use_all_support=None):
+        """使用numpy格式的图像执行推理预测"""
+        with self.model_lock:
+            # 检查类别是否存在
+            if class_name not in self.preloaded_samples:
+                raise ValueError(f"Class '{class_name}' not found. Available classes: {self.get_available_classes()}")
+            
+            # 获取默认设置
+            default_settings = self.support_config.get('default_settings', {})
+            if use_all_support is None:
+                use_all_support = default_settings.get('use_all_support', True)
+            
+            # 获取预加载的支持样本
+            support_data = self.preloaded_samples[class_name]
+            support_imgs = support_data['images'].to(self.device)
+            support_masks = support_data['masks'].to(self.device)
+            
+            results = []
+            
+            for query_array in query_arrays:
+                # 预处理numpy查询图像
+                query_tensor = self.preprocess_numpy_image(query_array).to(self.device)
+                query_name = ["query"]
+                
+                with torch.no_grad():
+                    if use_all_support and len(support_imgs) > 1:
+                        # 使用多个支持样本
+                        protos_list = []
+                        
+                        for i in range(len(support_imgs)):
+                            support_img = support_imgs[i:i+1]
+                            support_mask = support_masks[i:i+1]
+                            
+                            protos, _ = self.vrp_model(
+                                'mask',
+                                query_tensor,
+                                support_img,
+                                support_mask,
+                                training=False
+                            )
+                            protos_list.append(protos)
+                        
+                        # 合并多个prototypes
+                        combined_protos = torch.cat(protos_list, dim=1)
+                    else:
+                        # 只使用第一个支持样本
+                        support_img = support_imgs[0:1]
+                        support_mask = support_masks[0:1]
+                        
+                        combined_protos, _ = self.vrp_model(
+                            'mask',
+                            query_tensor,
+                            support_img,
+                            support_mask,
+                            training=False
+                        )
+                    
+                    # SAM预测
+                    low_masks, pred_mask = self.sam_model(query_tensor, query_name, combined_protos)
+                    
+                    # 获取概率分布
+                    prob_mask = torch.sigmoid(low_masks)
+                    
+                    # 二值化mask
+                    binary_mask = prob_mask > 0.5
+                    binary_mask = binary_mask.float()
+                
+                # 直接返回numpy数组，不需要转换
+                binary_np = binary_mask.squeeze().cpu().numpy()
+                prob_np = prob_mask.squeeze().cpu().numpy()
+                
+                results.append((binary_np, prob_np))
             
             return results
     
@@ -416,6 +547,109 @@ def predict_with_class(data):
     return jsonify(response)
 
 
+@app.route('/predict_numpy', methods=['POST'])
+def predict_numpy():
+    """使用numpy格式进行推理预测"""
+    try:
+        data = request.json
+        
+        # 验证请求数据
+        if not data or 'class_name' not in data or 'query_arrays' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required fields: class_name, query_arrays'
+            }), 400
+        
+        class_name = data['class_name']
+        query_arrays_encoded = data['query_arrays']
+        use_all_support = data.get('use_all_support', None)
+        
+        # 验证类别是否存在
+        available_classes = inference_server.get_available_classes()
+        if class_name not in available_classes:
+            return jsonify({
+                'success': False,
+                'error': f'Class "{class_name}" not found',
+                'available_classes': available_classes
+            }), 400
+        
+        # 解码numpy数组
+        query_arrays = []
+        for i, encoded_array in enumerate(query_arrays_encoded):
+            try:
+                numpy_array = inference_server.compressed_bytes_to_numpy(encoded_array)
+                query_arrays.append(numpy_array)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to decode query array {i+1}: {str(e)}'
+                }), 400
+        
+        print(f"Received numpy inference request for class '{class_name}' with {len(query_arrays)} query arrays")
+        
+        # 执行推理
+        start_time = time.time()
+        results = inference_server.predict_with_class_numpy(query_arrays, class_name, use_all_support)
+        inference_time = time.time() - start_time
+        
+        # 处理结果
+        response_results = []
+        
+        for i, (pred_mask, prob_mask) in enumerate(results):
+            # 计算统计信息
+            stats = {
+                'mean_probability': float(prob_mask.mean()),
+                'std_probability': float(prob_mask.std()),
+                'high_confidence_ratio': float((prob_mask > 0.8).sum() / prob_mask.size),
+                'low_confidence_ratio': float((prob_mask < 0.2).sum() / prob_mask.size),
+                'uncertain_ratio': float(((prob_mask > 0.3) & (prob_mask < 0.7)).sum() / prob_mask.size),
+                'positive_pixels': int((pred_mask > 0.5).sum()),
+                'total_pixels': int(pred_mask.size),
+                'mask_shape': list(pred_mask.shape),
+                'probability_range': [float(prob_mask.min()), float(prob_mask.max())]
+            }
+            
+            # 编码numpy结果
+            try:
+                binary_mask_encoded = inference_server.numpy_to_compressed_bytes(pred_mask)
+                prob_array_encoded = inference_server.numpy_to_compressed_bytes(prob_mask)
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to encode result arrays: {str(e)}'
+                }), 500
+            
+            result_item = {
+                'binary_mask_array': binary_mask_encoded,
+                'probability_array': prob_array_encoded,
+                'statistics': stats
+            }
+            response_results.append(result_item)
+        
+        # 构建响应
+        response = {
+            'success': True,
+            'timestamp': time.time(),
+            'inference_time': inference_time,
+            'class_name': class_name,
+            'query_count': len(query_arrays),
+            'support_samples_used': inference_server.preloaded_samples[class_name]['count'],
+            'format': 'numpy',
+            'results': response_results
+        }
+        
+        print(f"Numpy inference completed in {inference_time:.3f}s for {len(query_arrays)} arrays of class '{class_name}'")
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"Error in numpy prediction: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/classes', methods=['GET'])
 def get_classes():
     """获取可用的识别类别"""
@@ -449,7 +683,7 @@ def server_info():
     return jsonify({
         'model_device': str(inference_server.device),
         'image_size': inference_server.img_size,
-        'available_endpoints': ['/health', '/predict', '/info', '/classes'],
+        'available_endpoints': ['/health', '/predict', '/predict_numpy', '/info', '/classes'],
         'available_classes': classes,
         'version': '2.0.0'
     })
