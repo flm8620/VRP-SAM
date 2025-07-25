@@ -7,7 +7,7 @@
 SERVER_HOST="0.0.0.0"
 SERVER_PORT="58080"
 MODEL_PATH="./checkpoint_vrpsam_resnet101.pt"
-CONFIG_PATH="./support_classes_config-lekiwi.json"
+CONFIG_PATH="./support_classes_config-lekiwi3.json"
 SAM_VERSION="vit_h"
 BACKBONE="resnet101"
 DEVICE="cuda"

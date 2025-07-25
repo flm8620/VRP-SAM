@@ -1,0 +1,76 @@
+{
+  "support_classes": {
+    "front_cube": {
+      "description": "立方体/方块对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_near_1_t20.00s_f000600.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_cube_mask/front_near_1_t20.00s_f000600_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_near_2_t1.00s_f000030.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_cube_mask/front_near_2_t1.00s_f000030_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_near_2_t30.00s_f000900.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_cube_mask/front_near_2_t30.00s_f000900_mask.png"
+        }
+      ]
+    },
+    "front_table": {
+      "description": "操作台对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_far_1_t1.00s_f000030.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_table_mask/front_far_1_t1.00s_f000030_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_far_1_t10.00s_f000300.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_table_mask/front_far_1_t10.00s_f000300_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/front_far_2_t18.00s_f000540.png",
+          "mask": "datasets/robot_data2/cube_table_data/front_table_mask/front_far_2_t18.00s_f000540_mask.png"
+        }
+      ]
+    },
+    "wrist_cube": {
+      "description": "立方体/方块对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data2/cube_table_data/left_near_1_t40.00s_f001200.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_cube_mask/left_near_1_t40.00s_f001200_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/left_near_2_t36.00s_f001080.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_cube_mask/left_near_2_t36.00s_f001080_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/right_near_2_t40.00s_f001200.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_cube_mask/right_near_2_t40.00s_f001200_mask.png"
+        }
+      ]
+    },
+    "wrist_table": {
+      "description": "操作台对象识别",
+      "support_samples": [
+        {
+          "image": "datasets/robot_data2/cube_table_data/left_far_1_t1.00s_f000030.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_table_mask/left_far_1_t1.00s_f000030_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/left_far_2_t8.00s_f000240.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_table_mask/left_far_2_t8.00s_f000240_mask.png"
+        },
+        {
+          "image": "datasets/robot_data2/cube_table_data/right_far_1_t16.00s_f000480.png",
+          "mask": "datasets/robot_data2/cube_table_data/wrist_table_mask/right_far_1_t16.00s_f000480_mask.png"
+        }
+      ]
+    }
+  },
+  "default_settings": {
+    "use_all_support": true,
+    "max_support_samples": 5
+  }
+}

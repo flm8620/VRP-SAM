@@ -220,8 +220,8 @@ class VRPSAMInferenceServer:
         
         # 确保是float32类型，范围[0, 1]
         img_array = numpy_array.astype(np.float32)
-        if img_array.max() > 1.0:
-            img_array = img_array / 255.0
+        # if img_array.max() > 1.0:
+        #     img_array = img_array / 255.0
         
         # 调整大小到模型需要的尺寸
         from PIL import Image
